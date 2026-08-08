@@ -157,7 +157,7 @@ async def get_all_boards_data(
             "error_message": str(exc),
         }
 
-        try:
+    try:
         engine = get_sync_engine()
 
         # Cold-start path: DB is empty and no sync is running yet.
@@ -189,7 +189,6 @@ async def get_all_boards_data(
         result = await engine.run(board_ids=validated_board_ids, force=force_refresh)
 
         if not result.success:
-            # Special case: initial sync is running — no data available yet
             if result.sync_in_progress:
                 log_with_context(
                     logger, "info", "get_all_boards_data: initial sync in progress",
