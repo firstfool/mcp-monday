@@ -62,8 +62,8 @@ COPY pyproject.toml ./
 # The cache mount is never written into the image layer.
 # NOTE: Python snippet is intentionally on one line — multiline $() blocks
 # confuse the Dockerfile parser, which tries to read them as instructions.
-RUN --mount=type=cache,id=pip-deps,target=/root/.cache/pip \
-    python3 -m venv /build/.venv \
+
+RUN python3 -m venv /build/.venv \
     && /build/.venv/bin/pip install --upgrade pip setuptools wheel \
     && /build/.venv/bin/pip install \
         $(python3 -c "import tomllib; f=open('pyproject.toml','rb'); d=tomllib.load(f); f.close(); print(' '.join(d.get('project',{}).get('dependencies',[])))")
@@ -80,8 +80,7 @@ COPY src/ ./src/
 
 # --no-deps: all dependencies are already present from stage 1.
 # Non-editable install: package is fully baked into the venv, no /build/src needed at runtime.
-RUN --mount=type=cache,id=pip-builder,target=/root/.cache/pip \
-    /build/.venv/bin/pip install --no-deps .
+RUN /build/.venv/bin/pip install --no-deps .
 
 # Hard-fail the build immediately if the entry point is missing.
 # Catches mismatches between [project.scripts] in pyproject.toml and the source.
