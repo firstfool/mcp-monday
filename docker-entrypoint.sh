@@ -1,7 +1,6 @@
 #!/bin/sh
 set -e
-# Fix Railway volume mount permissions at runtime.
-# Railway mounts volumes as root — chown before dropping to appuser.
+# Fix Railway volume mount permissions at runtime then start the server.
 chown -R 1001:0 /mnt/data 2>/dev/null || true
 chmod -R g=u /mnt/data 2>/dev/null || true
-exec su appuser -s /bin/sh -c "exec mcp-monday-server"
+exec mcp-monday-server
