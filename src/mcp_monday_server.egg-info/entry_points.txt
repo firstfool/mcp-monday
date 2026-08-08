@@ -1,0 +1,2 @@
+[console_scripts]
+mcp-monday-server = mcp_monday_server.main:main

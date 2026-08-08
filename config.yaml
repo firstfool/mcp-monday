@@ -1,0 +1,34 @@
+# Monday.com MCP Server Configuration — Sync-First, Read-Only
+
+# Server configuration — SSE works best with MCP Inspector
+server:
+  type: "sse"
+
+# SSE configuration
+sse:
+  host: "0.0.0.0"
+  port: 8080
+
+# Tool execution timeout — must be long enough for the first full sync
+# (IBM workspace has 66 boards; allow 5 minutes)
+tools:
+  timeout: 300.0
+
+# Monday.com connection settings
+monday:
+  # API key set via environment variable: MCP_MONDAY_API_KEY (or legacy MONDAY_API_KEY)
+  timeout: 120
+  max_retries: 1
+
+# SQLite change-detection sync store
+sync:
+  db_path: "/tmp/monday_sync.db"
+  max_age_hours: 168
+  items_page_size: 500
+
+# Logging configuration
+logging:
+  level: "INFO"
+
+# Environment identifier
+environment: "production"

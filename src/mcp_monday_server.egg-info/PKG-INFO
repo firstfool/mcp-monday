@@ -1,0 +1,225 @@
+Metadata-Version: 2.4
+Name: mcp-monday-server
+Version: 0.2.0
+Summary: Read-only MCP server for Monday.com — cache-first with SQLite, no write tools
+Author-email: IBM Consulting Advantage <advantage@ibm.com>
+License: MIT
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: chuk-mcp-runtime>=0.10.8
+Requires-Dist: httpx>=0.24.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: pyyaml>=6.0.0
+Requires-Dist: certifi>=2023.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.10.0; extra == "dev"
+Requires-Dist: ruff>=0.0.270; extra == "dev"
+Requires-Dist: handsdown>=2.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: isort>=5.12.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Requires-Dist: types-pyyaml>=6.0.0; extra == "dev"
+
+---
+tags:
+  - needs_api_key_user
+  - needs_network_access_outbound
+---
+
+# 📅 MCP Monday Server
+
+A **production-grade MCP server** for Monday.com integration, built with
+[`chuk-mcp-runtime`](https://pypi.org/project/chuk-mcp-runtime/) and following
+[IBM Consulting Advantage MCP standards](https://github.ibm.com/advantage-mcp/mcp-standards).
+
+## 🔎 Overview
+
+The **MCP Monday Server** provides a complete set of tools to interact with **Monday.com workspaces**,
+enabling developers and agents to:
+
+- **Boards**: list, create, and manage boards, groups, and columns
+- **Items**: create, update, move, delete, archive, and fetch items and subitems
+- **Updates**: post and retrieve updates with attached files
+- **Files**: retrieve files from items and updates
+- **Docs**: list, create, and manage documents and content blocks
+
+All tools use structured JSON logging with sensitive-data redaction, Pydantic I/O validation,
+correlation-ID tracing, and automatic retry with exponential backoff.
+
+---
+
+## ✨ Features
+
+- 22 MCP tools covering all core Monday.com operations
+- SSE transport on port 8080 (configurable via `config.yaml`)
+- `httpx`-based async HTTP client with connection pooling and retry logic
+- Structured JSON logging (redacts API keys and tokens automatically)
+- Pydantic v2 input/output schemas with validation
+- Production-ready UBI9 container (3-stage build, non-root user, healthcheck)
+- Full devops stack: `Makefile`, `Containerfile`, `make podman`, `make trivy`
+
+---
+
+## ⚙️ Quick Start
+
+```bash
+git clone https://github.ibm.com/advantage-mcp/monday.git
+cd monday
+
+# Set up the virtual environment and install dependencies
+make install
+
+# Copy and configure environment variables
+cp .env.example .env
+# Edit .env — set MCP_MONDAY_API_KEY at minimum
+
+# Run the server (SSE on port 8080 by default)
+make serve
+```
+
+The server starts at `http://0.0.0.0:8080/sse`.
+
+---
+
+## 🔐 Environment Variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `MCP_MONDAY_API_KEY` | ✅ Yes | — | Monday.com Personal API token |
+| `MCP_MONDAY_WORKSPACE_URL` | No | — | Base URL for building item/doc links (e.g. `https://acme.monday.com`) |
+| `MCP_MONDAY_TIMEOUT` | No | `30` | Request timeout in seconds |
+| `MCP_MONDAY_MAX_RETRIES` | No | `3` | Max retry attempts on timeout/network error |
+| `MCP_MONDAY_LOG_LEVEL` | No | `INFO` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `MCP_MONDAY_LOG_FORMAT` | No | `json` | Log format: `json` (production) or `text` (development) |
+| `MCP_MONDAY_ENVIRONMENT` | No | `production` | Environment identifier |
+
+---
+
+## 🛠 Available Tools
+
+### 📋 Boards
+
+| Tool | Description |
+|---|---|
+| `list_boards` | List all boards (paginated) |
+| `get_board_groups` | Get all groups in a board |
+| `get_board_columns` | Get all columns of a board (with label values) |
+| `create_board` | Create a new board |
+| `create_board_group` | Create a new group inside a board |
+
+### 📌 Items
+
+| Tool | Description |
+|---|---|
+| `list_items_in_groups` | List items in groups with cursor pagination |
+| `list_subitems_in_items` | List subitems for a set of parent items |
+| `create_item` | Create a top-level item or subitem |
+| `update_item` | Update column values on an item |
+| `create_update` | Post a text update on an item |
+| `get_item_by_id` | Fetch full item data by ID |
+| `get_item_updates` | Get updates (comments) for an item |
+| `move_item_to_group` | Move an item to a different group |
+| `delete_item` | Delete an item |
+| `archive_item` | Archive an item |
+
+### 📎 Files
+
+| Tool | Description |
+|---|---|
+| `get_item_files` | Get files attached to an item |
+| `get_update_files` | Get files attached to an update |
+
+### 📑 Docs
+
+| Tool | Description |
+|---|---|
+| `get_docs` | List documents |
+| `get_doc_content` | Get content blocks of a document |
+| `create_doc` | Create a document in a workspace or board |
+| `add_doc_block` | Add a content block to a document |
+
+---
+
+## 📂 Project Structure
+
+```
+mcp-monday-server/
+├── Containerfile              # 3-stage UBI9 production container
+├── Makefile                   # All devops targets (make help for full list)
+├── config.yaml                # SSE transport config (port 8080)
+├── pyproject.toml             # Project + tool configuration (PEP 621)
+├── .env.example               # Environment variable template
+├── CONTRIBUTING.md            # Contribution guidelines
+└── src/
+    └── mcp_monday_server/
+        ├── main.py            # Entrypoint — loads config, starts runtime
+        ├── config.py          # Pydantic configuration model
+        ├── logging_config.py  # JSON structured logging with redaction
+        ├── exceptions.py      # Typed exception hierarchy
+        ├── clients/
+        │   ├── base_client.py    # Async httpx client with retry/backoff
+        │   └── monday_client.py  # Monday.com GraphQL client singleton
+        └── tools/
+            ├── schemas.py        # Pydantic Input/Output schemas
+            ├── list_boards.py
+            ├── get_board_groups.py
+            └── ...               # One file per tool
+```
+
+---
+
+## 🐳 Container
+
+```bash
+# Build
+make podman
+
+# Run (reads MCP_MONDAY_API_KEY from environment)
+make podman-run
+
+# Stop
+make podman-stop
+
+# Security scan
+make trivy
+```
+
+---
+
+## 🧪 Testing
+
+```bash
+make test       # run all tests
+make test-cov   # run with HTML coverage report
+```
+
+---
+
+## 📖 Development
+
+```bash
+make lint       # auto-fix linting and formatting
+make validate   # lint-check + tests (pre-commit gate)
+make docs       # generate API documentation
+make sbom       # generate Software Bill of Materials
+```
+
+---
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on filing issues and submitting pull requests.
+
+---
+
+## 📜 License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+*Made with Bob*
