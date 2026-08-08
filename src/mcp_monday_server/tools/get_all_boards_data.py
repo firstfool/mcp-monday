@@ -10,6 +10,7 @@ Typical usage by the ICA assistant:
   3. Reason over the data locally to answer the user's query.
 """
 
+import asyncio
 import re
 import uuid
 from typing import Any, Dict, List, Optional
@@ -24,6 +25,18 @@ logger = get_logger(__name__)
 
 # Numeric board IDs only — prevents any GraphQL injection
 _BOARD_ID_RE = re.compile(r"^\d+$")
+
+# Keeps a strong reference to background sync tasks so they are not
+# garbage-collected before they complete (asyncio only holds a weak ref).
+_background_tasks: set = set()
+
+
+def _fire_background_sync(engine, board_ids, force):
+    """Launch a detached sync task that survives ICA connection drops."""
+    task = asyncio.create_task(engine.run(board_ids=board_ids, force=force))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    log_with_context(logger, "info", "Background sync task launched")
 
 
 def _validate_board_ids(board_ids: Optional[List[str]]) -> Optional[List[str]]:
@@ -144,8 +157,35 @@ async def get_all_boards_data(
             "error_message": str(exc),
         }
 
-    try:
+        try:
         engine = get_sync_engine()
+
+        # Cold-start path: DB is empty and no sync is running yet.
+        # Fire the sync as a detached background task so it cannot be cancelled
+        # when ICA drops the SSE connection after its MCP timeout (~60s).
+        # Return SYNC_IN_PROGRESS immediately — ICA will retry after 10s.
+        last_sync = engine._db.get_last_sync_info()
+        if last_sync is None and not engine._lock.locked():
+            _fire_background_sync(engine, validated_board_ids, force_refresh)
+            return {
+                "success": False,
+                "error_code": "SYNC_IN_PROGRESS",
+                "error_message": "Initial sync is running. Please retry in a few seconds.",
+                "retry_after_seconds": 10,
+            }
+
+        # Sync already running (lock held) and DB still empty — keep returning
+        # SYNC_IN_PROGRESS until the background task commits the data.
+        if last_sync is None and engine._lock.locked():
+            return {
+                "success": False,
+                "error_code": "SYNC_IN_PROGRESS",
+                "error_message": "Initial sync is running. Please retry in a few seconds.",
+                "retry_after_seconds": 10,
+            }
+
+        # DB has data — normal path: await the engine (cache hit is instant,
+        # re-sync on changed data blocks briefly but not 150s).
         result = await engine.run(board_ids=validated_board_ids, force=force_refresh)
 
         if not result.success:
