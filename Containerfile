@@ -105,48 +105,50 @@ LABEL maintainer="IBM Consulting Advantage <advantage@ibm.com>" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${GIT_COMMIT}"
 
+# Install Python runtime + shadow-utils (provides runuser and useradd).
+# shadow-utils is needed to create appuser and for the entrypoint to drop
+# privileges from root to appuser at runtime.
 RUN microdnf upgrade -y \
     && microdnf install -y \
         python${PYTHON_VERSION} \
+        shadow-utils \
     && microdnf clean all \
     && rm -rf /var/cache/yum /var/cache/dnf
 
 RUN update-alternatives --install /usr/bin/python3 python3 \
         /usr/bin/python${PYTHON_VERSION} 1
 
+# Create named user 1001 so runuser can reference it by name.
+RUN useradd -u 1001 -g 0 -M -d /app -s /sbin/nologin appuser
+
 WORKDIR /app
 
 COPY --from=builder /build/.venv /app/.venv
 COPY config.yaml ./
 
-# FIX 4: Pre-create /mnt/data with open permissions so Railway's volume mount
-# at /mnt/data inherits a writable directory for user 1001.
-# chmod 777 ensures the volume is writable regardless of how Railway sets
-# ownership on the mount point at runtime.
+# Copy the entrypoint script that fixes volume permissions at runtime.
+COPY docker-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Pre-create all runtime directories with correct ownership.
+# /mnt/data is the Railway volume mount point — the entrypoint will re-chown
+# it at runtime after the volume is mounted.
 RUN mkdir -p /tmp/chuk_mcp_artifacts /tmp/monday_sync /mnt/data \
     && chown -R 1001:0 /app /tmp/chuk_mcp_artifacts /tmp/monday_sync /mnt/data \
-    && chmod -R g=u /app /tmp/chuk_mcp_artifacts /tmp/monday_sync \
-    && chmod 777 /mnt/data
+    && chmod -R g=u /app /tmp/chuk_mcp_artifacts /tmp/monday_sync /mnt/data
 
 EXPOSE 8080
 
-USER 1001
+# No USER instruction — entrypoint runs as root to fix volume permissions,
+# then drops to appuser (uid 1001) via runuser before starting the server.
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONOPTIMIZE=1 \
     MCP_MONDAY_LOG_FORMAT=json \
     MCP_MONDAY_LOG_LEVEL=INFO \
     CONFIG_PATH=/app/config.yaml \
     CHUK_ARTIFACTS_DIR=/tmp/chuk_mcp_artifacts \
-    # FIX 4: Default DB path now points to the persistent volume mount.
-    # Override with MCP_MONDAY_SYNC_DB_PATH env var if needed.
     MCP_MONDAY_SYNC_DB_PATH=/mnt/data/monday_sync.db
 
-# FIX 3: Removed the HEALTHCHECK instruction entirely.
-# Railway does not use Docker HEALTHCHECK — it uses its own TCP/HTTP probes
-# configured via railway.toml. The HEALTHCHECK here was triggering curl against
-# /health which chuk-mcp-runtime may not serve, causing false crash reports.
-
-CMD ["mcp-monday-server"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
