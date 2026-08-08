@@ -112,20 +112,6 @@ def main() -> None:
                 f"Config file not found: {config_path}, defaulting to stdio transport"
             )
 
-                # Pre-warm: fire a background sync immediately at startup so the DB is
-        # populated before the first ICA tool call arrives.
-        # Import here to avoid circular imports (tools import engine).
-        import asyncio
-        from .tools.get_all_boards_data import _fire_background_sync
-        from .sync.engine import get_sync_engine as _get_engine
-
-        async def _pre_warm():
-            await asyncio.sleep(2)  # brief delay to let the event loop settle
-            engine = _get_engine()
-            if engine._db.get_last_sync_info() is None:
-                _fire_background_sync(engine, None, False)
-                log_with_context(logger, "info", "Pre-warm sync triggered at startup")
-
         # Start the MCP runtime — auto-discovers all @mcp_tool() decorated functions
         runtime_main()
 
