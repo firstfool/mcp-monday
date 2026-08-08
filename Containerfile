@@ -119,9 +119,14 @@ WORKDIR /app
 COPY --from=builder /build/.venv /app/.venv
 COPY config.yaml ./
 
-RUN mkdir -p /tmp/chuk_mcp_artifacts /tmp/monday_sync \
-    && chown -R 1001:0 /app /tmp/chuk_mcp_artifacts /tmp/monday_sync \
-    && chmod -R g=u /app /tmp/chuk_mcp_artifacts /tmp/monday_sync
+# FIX 4: Pre-create /mnt/data with open permissions so Railway's volume mount
+# at /mnt/data inherits a writable directory for user 1001.
+# chmod 777 ensures the volume is writable regardless of how Railway sets
+# ownership on the mount point at runtime.
+RUN mkdir -p /tmp/chuk_mcp_artifacts /tmp/monday_sync /mnt/data \
+    && chown -R 1001:0 /app /tmp/chuk_mcp_artifacts /tmp/monday_sync /mnt/data \
+    && chmod -R g=u /app /tmp/chuk_mcp_artifacts /tmp/monday_sync \
+    && chmod 777 /mnt/data
 
 EXPOSE 8080
 
@@ -135,7 +140,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
     MCP_MONDAY_LOG_LEVEL=INFO \
     CONFIG_PATH=/app/config.yaml \
     CHUK_ARTIFACTS_DIR=/tmp/chuk_mcp_artifacts \
-    MCP_MONDAY_SYNC_DB_PATH=/tmp/monday_sync.db
+    # FIX 4: Default DB path now points to the persistent volume mount.
+    # Override with MCP_MONDAY_SYNC_DB_PATH env var if needed.
+    MCP_MONDAY_SYNC_DB_PATH=/mnt/data/monday_sync.db
 
 # FIX 3: Removed the HEALTHCHECK instruction entirely.
 # Railway does not use Docker HEALTHCHECK — it uses its own TCP/HTTP probes
